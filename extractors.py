@@ -6,6 +6,7 @@ from os import rename as rename_file
 from pathlib import Path
 from zipfile import ZipFile
 
+import rarfile
 import rows
 from rows.utils import download_file
 
@@ -109,7 +110,7 @@ def get_organization(internal_filename, year):
         return internal_filename.split('Receitas')[1].replace('.txt', '').lower()
     elif year in (2008, 2014, 2016):
         return internal_filename.split('_')[1]
-    elif year == 2006 or year == 2004:
+    elif year == 2006 or year == 2004 or year == 2002:
         return 'comites' if 'Comit' in internal_filename else 'candidatos'
     elif year == 2012:
         return internal_filename.split('_')[1]
@@ -462,6 +463,30 @@ class PrestacaoContasExtractor(Extractor):
         }
         return f"http://agencia.tse.jus.br/estatistica/sead/odsele/prestacao_contas/prestacao_{urls[year]}.zip"
 
+    def _get_compressed_fobjs(self, filename, year, type_mov):
+        if year == 2002 or year == 2006:
+            rarobj = rarfile.RarFile(str(filename))
+            filelist = rarobj.namelist()
+            opener = rarobj
+        else:
+            zfile = ZipFile(str(filename))
+            filelist = [fn.filename for fn in zfile.filelist]
+            opener = zfile
+
+        valid_names = []
+        fobjs = []
+        for internal_filename in filelist:
+            if not self.valid_filename(
+                    internal_filename,
+                    type_mov=type_mov,
+                    year=year
+            ):
+                continue
+            fobjs.append(opener.open(internal_filename))
+            valid_names.append(internal_filename)
+
+        return fobjs, valid_names
+
     def fix_fobj(self, fobj, year):
         if year == 2004:
             fobj = utils.FixQuotes(fobj, encoding=self.encoding)
@@ -515,7 +540,8 @@ class PrestacaoContasExtractor(Extractor):
         year = str(year)
         return type_mov in filename and\
             (filename.endswith('.csv') or filename.endswith('.txt'))\
-            and (('brasil' not in filename and 'sup' not in filename) or
+            and ((('brasil' not in filename or year == '2008') and\
+            'sup' not in filename) or
                   year.endswith('suplementar'))
 
     def order_columns(self, name):
@@ -542,33 +568,24 @@ class PrestacaoContasExtractor(Extractor):
         return value, name
 
 
-
-
 class PrestacaoContasReceitasExtractor(PrestacaoContasExtractor):
     def extract(self, year):
         filename = self.filename(year)
-        zfile = ZipFile(filename)
-        for file_info in zfile.filelist:
-            internal_filename = file_info.filename
-            if not self.valid_filename(
-                    internal_filename,
-                    type_mov='receita',
-                    year=year
-            ):
-                continue
-            fobj = zfile.open(internal_filename)
+        fobjs, internal_filenames = self._get_compressed_fobjs(
+                filename,
+                year,
+                type_mov='receita'
+        )
+        for fobj, internal_filename in zip(fobjs, internal_filenames):
             fobj = self.fix_fobj(fobj, year)
             dialect = csv.Sniffer().sniff(fobj.read(1024))
             fobj.seek(0)
             reader = csv.reader(fobj, dialect=dialect)
-            if internal_filename == '2004/Comitê/Receita/ReceitaComitê.CSV':
-                import ipdb; ipdb.set_trace()
             header_meta = self.get_headers(
                 year,
                 filename,
                 internal_filename,
                 type_mov='receitas'
-
             )
             year_fields = [
                 field.nome_final or field.nome_tse
@@ -595,10 +612,7 @@ class PrestacaoContasReceitasExtractor(PrestacaoContasExtractor):
                         field.nome_tse: field.nome_final or field.nome_tse
                         for field in header_meta["year_fields"]
                     }
-                    try:
-                        year_fields = [field_map[field_name.strip()] for field_name in row]
-                    except:
-                        import ipdb; ipdb.set_trace()
+                    year_fields = [field_map[field_name.strip()] for field_name in row]
                     convert_function = self.convert_row(year_fields, final_fields, year)
                     continue
 
@@ -608,16 +622,12 @@ class PrestacaoContasReceitasExtractor(PrestacaoContasExtractor):
 class PrestacaoContasDespesasExtractor(PrestacaoContasExtractor):
     def extract(self, year):
         filename = self.filename(year)
-        zfile = ZipFile(filename)
-        for file_info in zfile.filelist:
-            internal_filename = file_info.filename
-            if not self.valid_filename(
-                    internal_filename,
-                    type_mov='despesa',
-                    year=year
-            ):
-                continue
-            fobj = zfile.open(internal_filename)
+        fobjs, internal_filenames = self._get_compressed_fobjs(
+                filename,
+                year,
+                type_mov='despesa'
+        )
+        for fobj, internal_filename in zip(fobjs, internal_filenames):
             fobj = self.fix_fobj(fobj, year)
             dialect = csv.Sniffer().sniff(fobj.read(1024))
             fobj.seek(0)
@@ -627,7 +637,6 @@ class PrestacaoContasDespesasExtractor(PrestacaoContasExtractor):
                 filename,
                 internal_filename,
                 type_mov='despesas'
-
             )
             year_fields = [
                 field.nome_final or field.nome_tse
