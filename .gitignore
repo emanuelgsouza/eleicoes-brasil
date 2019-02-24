@@ -20,3 +20,8 @@ data/*
 dist/*
 fotos/*
 reg_settings.py
+lib/
+include/
+bin/
+.vscode
+local/
