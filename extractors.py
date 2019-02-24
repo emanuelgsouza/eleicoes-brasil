@@ -433,3 +433,85 @@ class VotacaoZonaExtractor(Extractor):
         else:
             value = 4
         return value, name
+
+
+class VotacaoPartidoZonaExtractor(Extractor):
+    def url(self, year):
+        return f"http://agencia.tse.jus.br/estatistica/sead/odsele/votacao_partido_munzona/votacao_partido_munzona_{year}.zip"
+
+    def filename(self, year):
+        return settings.DOWNLOAD_PATH / f"votacao-partido-zona-{year}.zip"
+
+    def valid_filename(self, filename):
+        return filename.startswith("votacao_partido_munzona_")
+
+    def get_headers(self, year, filename, internal_filename):
+        uf = self.extract_state_from_filename(internal_filename)
+        if year < 2014:
+            header_year = "1994"
+        elif 2014 <= year <= 2016:
+            header_year = "2014"
+        elif year == 2018:
+            header_year = "2018"
+        else:
+            raise ValueError("Unrecognized year")
+        return {
+            "year_fields": read_header(
+                settings.HEADERS_PATH / f"votacao-partido-zona-{header_year}.csv"
+            ),
+            "final_fields": read_header(
+                settings.HEADERS_PATH / "votacao-partido-zona-final.csv"
+            ),
+        }
+
+    def convert_row(self, row_field_names, final_field_names):
+        def convert(row_data):
+            row = dict(zip(row_field_names, row_data))
+            new = {}
+            for key in final_field_names:
+                value = row.get(key, "").strip()
+                if value in ("#NULO", "#NULO#", "#NE#"):
+                    value = ""
+                new[key] = value = utils.unaccent(value).upper()
+
+            new["sigla_uf"] = fix_sigla_uf(new["sigla_uf"])
+            # new["nome"] = fix_nome(new["nome"])
+            new["codigo_cargo"], new["descricao_cargo"], _ = fix_cargo(
+                new["codigo_cargo"], new["descricao_cargo"]
+            )
+
+            return new
+
+        return convert
+
+    def order_columns(self, name):
+        """Order columns according to a (possible) normalization
+
+        The order is:
+        - Election
+        - Election Round
+        - Geographic Area
+        - Party
+        - Application
+        - Votes
+        """
+
+        if name.endswith("_eleicao"):
+            value = 0
+        elif name.endswith("_turno"):
+            value = 1
+        elif (
+            name.endswith("_ue") or name.endswith("_uf") or name.endswith("_municipio")
+        ):
+            value = 2
+        elif (
+            name.endswith("_legenda")
+            or name.endswith("_coligacao")
+            or name.endswith("_partido")
+        ):
+            value = 3
+        elif "zona" in name or "voto" in name:
+            value = 5
+        else:
+            value = 4
+        return value, name

@@ -14,6 +14,7 @@ from extractors import (
     CandidaturaExtractor,
     BemDeclaradoExtractor,
     VotacaoZonaExtractor,
+    VotacaoPartidoZonaExtractor
 )
 
 REGEXP_HEADER_YEAR = re.compile("([0-9]{4}.*)\.csv")
@@ -118,6 +119,11 @@ if __name__ == "__main__":
             "years": range(1996, final_votation_year, 2),
             "extractor_class": VotacaoZonaExtractor,
             "output_filename": settings.OUTPUT_PATH / "votacao-zona.csv.xz",
+        },
+        "votacao-partido-zona": {
+            "years": range(1996, final_votation_year, 2),
+            "extractor_class": VotacaoPartidoZonaExtractor,
+            "output_filename": settings.OUTPUT_PATH / "votacao-partido-zona.csv.xz",
         },
     }
     # TODO: clear '##VERIFICAR BASE 1994##' so we can add 1994 too
